@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  medimemory:
+    build:
+      context: .
+      dockerfile: Dockerfile-medimemory
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./data:/app/data
+      - ./medical_images:/app/medical_images
+      - ./logs:/app/logs
+    environment:
+      - MEDIMEMORY_DB_PATH=/app/data/medimemory.db
+      - MEDIMEMORY_HOST=0.0.0.0
+      - MEDIMEMORY_PORT=8001
+      - MEDIMEMORY_LOG_LEVEL=info
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Add PostgreSQL for production metadata storage
+  postgres:
+    image: postgres:13
+    environment:
+      - POSTGRES_DB=medimemory
+      - POSTGRES_USER=medimemory
+      - POSTGRES_PASSWORD=secure_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    profiles: ["with-postgres"]
+
+  # Optional: Add Redis for caching
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    profiles: ["with-cache"]
+
+volumes:
+  postgres_data:
+    driver: local
