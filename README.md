@@ -1,17 +1,16 @@
 # MediMemory: Medical Image Analysis Extension of SuperMemory MCP Server
 
-🏥 **A specialized Model Context Protocol (MCP) server for medical imaging workflows with AI-powered clinical decision support.**
+🏥 **A research/demo Model Context Protocol (MCP) server that stores medical images as embeddings and retrieves similar cases.**
+
+> **Not for clinical use.** MediMemory is a research and demonstration project. It has not been validated for clinical use, has not been evaluated by clinicians, and has only been run on synthetic images produced by its own generator (`medical_data_generator.py`). The pathology "suggestions" come from a placeholder classifier with randomly initialised weights (see `PathologyClassifier` in `medimemory_server.py`), so they carry no diagnostic meaning.
 
 ## ✨ Features
 
-- **🔬 Medical Image Analysis**: CNN-based feature extraction for chest X-rays, CT, and MRI
-- **🧠 AI Diagnosis Suggestions**: Multi-label pathology classification with confidence scores  
-- **📊 Semantic Search**: Vector-based similarity search for medical images and reports
-- **👨‍⚕️ Clinical Workflow Integration**: Tools designed specifically for radiology workflows
-- **🔗 MCP Compliance**: Universal compatibility with LLM-based medical AI applications
-- **🔒 HIPAA Ready**: Security features for healthcare data compliance
-- **📈 Longitudinal Analysis**: Patient-specific imaging history tracking
-- **⚡ High Performance**: Sub-100ms search across 100,000+ medical images
+- **🔬 Image Embeddings**: Feature extraction with an ImageNet-pretrained DenseNet-121 (no medical fine-tuning)
+- **🧠 Pathology Suggestion Placeholder**: Multi-label output over 15 chest X-ray labels from randomly initialised weights; a stand-in for a trained model
+- **📊 Similarity Search**: FAISS inner-product search over image embeddings, with text embeddings from sentence-transformers for reports
+- **🔗 MCP Tools**: `store_medical_image`, `search_similar_cases`, `get_diagnosis_suggestions`
+- **📈 Patient History**: Memories are stored per patient ID in SQLite
 
 ## 🏗️ Architecture
 
@@ -19,7 +18,7 @@
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │   Medical LLMs  │    │   MediMemory     │    │   Medical Data  │
 │                 │    │   MCP Server     │    │                 │
-│ • Radiology AI  │◄──►│                  │◄──►│ • DICOM Images  │
+│ • Radiology AI  │◄──►│                  │◄──►│ • Images (PNG)  │
 │ • Clinical GPT  │    │ • Image Embeddings│    │ • Reports       │
 │ • Diagnosis AI  │    │ • Pathology Class.│    │ • Patient Data  │
 │ • Teaching LLMs │    │ • Similar Cases  │    │ • Metadata      │
@@ -32,26 +31,30 @@
 
 - Python 3.11+
 - Docker (optional)
-- Medical imaging data (DICOM format supported)
+- Image files readable by Pillow (PNG/JPEG); DICOM is not supported
 
 ### Local Installation
 
 ```bash
-# Extract the source code
-unzip medimemory-complete-system.zip
-cd medimemory
+git clone https://github.com/ln-bodicherla/MediMemory.git
+cd MediMemory
 
-# Install dependencies
-pip install -r requirements-medimemory.txt
+# Install dependencies (no requirements file is included yet)
+pip install torch torchvision faiss-cpu sentence-transformers mcp fastapi uvicorn pillow numpy pandas scikit-learn requests aiohttp python-multipart
 
-# Start the server
+# Generate synthetic sample data
+python medical_data_generator.py
+
+# Start the server (HTTP on port 8001)
 python medimemory_server.py
 
-# Test with sample data
+# Run the demo client
 python medimemory_client.py
 ```
 
 ### Docker Installation
+
+The Dockerfile expects a `requirements-medimemory.txt` that is not in the repository yet; create it from the dependency list above before building.
 
 ```bash
 # Build and run
@@ -86,12 +89,16 @@ similar_cases = client.search_similar_cases(
     limit=5
 )
 
-# Get AI diagnosis suggestions
+# Placeholder: the client currently returns hard-coded example values here
 suggestions = client.get_diagnosis_suggestions("new_xray.png")
 print(f"Top prediction: {suggestions['pathology_predictions']}")
 ```
 
+Note: `MediMemoryClient.get_diagnosis_suggestions` does not call the server yet; it returns fixed demo values.
+
 ### MCP Tool Integration
+
+The MCP tool handlers are defined in `medimemory_server.py`, but `main()` currently starts only the HTTP API and does not serve MCP over stdio, so this client configuration will not work until a stdio entry point is added.
 
 ```json
 {
@@ -107,23 +114,13 @@ print(f"Top prediction: {suggestions['pathology_predictions']}")
 }
 ```
 
-## 📊 Performance Benchmarks
+## Evaluation
 
-### Retrieval Performance
-- **Recall@5**: 85% (finds 85% of relevant cases in top 5 results)
-- **Precision@5**: 82% (82% of top 5 results are relevant)
-- **Search Latency**: 41ms average for 10,000 images
+No benchmark or accuracy results are published. `medimemory_evaluation.py` contains an evaluation framework (Recall@K / Precision@K for retrieval, per-label F1 and AUC for classification, search time at different index sizes), but its `__main__` block only prints a message; you have to construct a `MediMemoryStore`, load data from `medical_data_generator.py`, and call `run_comprehensive_evaluation` yourself. Because the images are synthetic and the classifier weights are random, any numbers it produces only exercise the code paths.
 
-### Classification Accuracy
-- **Pneumonia**: F1-Score 0.87, AUC 0.91
-- **Cardiomegaly**: F1-Score 0.80, AUC 0.85  
-- **Overall Average**: F1-Score 0.78, AUC 0.84
+## Possible Applications (not validated)
 
-### Scalability
-- **100,000 images**: 345ms search time, 2.3GB memory usage
-- **Throughput**: 180 searches/second, 45 uploads/second
-
-## 🏥 Clinical Applications
+The following are directions this kind of system could be explored for in research settings. None of them have been tested.
 
 ### 1. Radiology Decision Support
 - Retrieve similar cases for difficult diagnoses
@@ -145,61 +142,15 @@ print(f"Top prediction: {suggestions['pathology_predictions']}")
 - Retrospective outcome analysis
 - Clinical trial patient recruitment
 
-## 🔒 Security and Compliance
+## Security and Privacy
 
-### HIPAA Compliance Features
-- **Encryption**: AES-256 encryption at rest and in transit
-- **Access Controls**: Role-based permissions with audit logs
-- **De-identification**: Automated PHI removal options
-- **Secure Deployment**: On-premises installation support
-
-### Privacy Safeguards
-- No external data transmission by default
-- Configurable data retention policies  
-- Comprehensive audit logging
-- User consent management
-
-## 🧪 Evaluation and Validation
-
-The system has been comprehensively evaluated using:
-- **Synthetic Dataset**: 100 patients, 200+ studies with realistic pathology patterns
-- **Performance Metrics**: Recall@K, Precision@K, F1-scores, AUC analysis
-- **Scalability Testing**: Up to 100,000 medical images
-- **Clinical Relevance**: Qualitative assessment by medical professionals
-
-## 📈 Research Results
-
-Our research paper demonstrates:
-- **Superior Performance**: Outperforms existing medical image retrieval systems
-- **Clinical Utility**: Significant improvements in diagnostic accuracy when used as decision support
-- **Technical Innovation**: First MCP-compliant medical imaging memory system
-- **Scalability**: Production-ready performance characteristics
+There are no HIPAA, encryption, access-control, audit-logging or de-identification features. Data is stored unencrypted in a local SQLite file and an in-memory FAISS index. Do not load real patient data.
 
 ## 🔧 Configuration
 
-### Environment Variables
+The server does not read environment variables yet: the database path defaults to `medimemory.db`, and the HTTP server listens on `0.0.0.0:8001` (set in `main()` in `medimemory_server.py`). The `MEDIMEMORY_*` variables in `docker-compose-medimemory.yml` are currently ignored.
 
-```bash
-# Database configuration  
-export MEDIMEMORY_DB_PATH="/app/data/medimemory.db"
-export MEDIMEMORY_BACKUP_ENABLED=true
-
-# Server configuration
-export MEDIMEMORY_HOST="0.0.0.0"
-export MEDIMEMORY_PORT=8001
-export MEDIMEMORY_LOG_LEVEL="info"
-
-# Medical AI configuration
-export MEDIMEMORY_MODEL_PATH="/app/models/"
-export MEDIMEMORY_EMBEDDING_DIM=1024
-export MEDIMEMORY_SIMILARITY_THRESHOLD=0.7
-
-# Security configuration
-export MEDIMEMORY_ENCRYPTION_KEY="your-encryption-key"
-export MEDIMEMORY_ACCESS_LOGS=true
-```
-
-## 🚀 Deployment Options
+## 🚀 Running
 
 ### Development
 ```bash
@@ -208,18 +159,7 @@ python medimemory_server.py
 
 ### Docker
 ```bash
-docker-compose up -d
-```
-
-### Cloud (AWS ECS)
-```bash
-# Configure AWS credentials and VPC
-export AWS_REGION=us-west-2
-export VPC_ID=vpc-xxxxxxxx
-export SUBNET_IDS=subnet-xxxxxxxx,subnet-yyyyyyyy
-
-# Deploy to ECS
-./deploy-medimemory-aws.sh
+docker-compose -f docker-compose-medimemory.yml up -d
 ```
 
 ## 📚 API Reference
@@ -227,7 +167,7 @@ export SUBNET_IDS=subnet-xxxxxxxx,subnet-yyyyyyyy
 ### MCP Tools
 
 #### `store_medical_image`
-Store medical image with automatic AI analysis.
+Store a medical image with its embeddings and placeholder pathology scores.
 
 **Parameters:**
 - `image_data` (string): Base64 encoded medical image
@@ -250,7 +190,7 @@ Search for medically similar cases.
 - `threshold` (number): Similarity threshold (default: 0.7)
 
 #### `get_diagnosis_suggestions`
-Get AI-powered diagnosis suggestions.
+Return placeholder pathology scores (random weights; not a diagnosis).
 
 **Parameters:**
 - `image_data` (string): Base64 encoded medical image
@@ -260,9 +200,7 @@ Get AI-powered diagnosis suggestions.
 
 - `POST /upload_medical_image` - Upload medical image
 - `GET /search_cases` - Search medical cases
-- `GET /patient_history/{patient_id}` - Get patient imaging history
 - `GET /health` - Health check
-- `GET /metrics` - Performance metrics
 
 ## 🐛 Troubleshooting
 
@@ -272,7 +210,7 @@ Get AI-powered diagnosis suggestions.
 ```bash
 # Check Python version and dependencies
 python --version  # Should be 3.11+
-pip install -r requirements-medimemory.txt
+# (install the dependency list from Quick Start)
 
 # Check available memory for ML models
 free -h
@@ -282,9 +220,6 @@ free -h
 ```bash
 # Verify image format support
 python -c "from PIL import Image; print(Image.EXTENSION)"
-
-# Check DICOM processing
-python -c "import pydicom; print('DICOM support OK')"
 ```
 
 **Memory/performance issues:**
@@ -296,30 +231,20 @@ htop
 ls -lh data/
 
 # Enable GPU acceleration (if available)
-pip install faiss-gpu torch-cuda
+# install the CUDA builds of PyTorch and FAISS for your platform
 ```
 
 ## 📄 License
 
-This project is licensed under the MIT License with additional healthcare compliance provisions - see the [LICENSE](LICENSE) file for details.
+No license file is included yet.
 
 ## 🙏 Acknowledgments
 
 - **SuperMemory MCP Server** - Base memory architecture
-- **CheXpert Dataset** - Training data for pathology classification
 - **FAISS** - High-performance vector similarity search
 - **PyTorch** - Deep learning framework
 - **Model Context Protocol** - Standardized LLM integration
 
-## 📞 Support
-
-- 📧 Email: medimemory-support@example.com
-- 🐛 Issues: [GitHub Issues](https://github.com/user/medimemory/issues)
-- 📚 Documentation: [Full Documentation](https://medimemory.readthedocs.io)
-- 💬 Community: [Medical AI Discord](https://discord.gg/medicalai)
-
 ---
 
-**MediMemory** - Empowering the future of AI-assisted medical imaging 🏥✨
-
-*Disclaimer: This system is for research and development purposes. Clinical deployment requires appropriate regulatory approval and validation.*
+*Disclaimer: This is a research and demonstration project. It is not a medical device, has not been validated for clinical use, and has only been run on synthetic images.*
